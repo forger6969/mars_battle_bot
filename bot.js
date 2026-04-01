@@ -14,6 +14,29 @@ const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_CHAT_ID || "")
 
 const isAdmin = (userId) => ADMIN_IDS.includes(String(userId));
 
+// ─── Deadline ─────────────────────────────────────────────────────────────────
+// В .env укажите: REGISTRATION_DEADLINE=2026-04-03T18:00:00
+// Формат: ISO 8601 (по ташкентскому времени UTC+5)
+const DEADLINE_RAW = process.env.REGISTRATION_DEADLINE || null;
+const DEADLINE = DEADLINE_RAW ? new Date(DEADLINE_RAW) : null;
+
+function isDeadlinePassed() {
+    if (!DEADLINE) return false;
+    return new Date() > DEADLINE;
+}
+
+function formatDeadline() {
+    if (!DEADLINE) return null;
+    return DEADLINE.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Tashkent"
+    });
+}
+
 // ─── In-memory state ──────────────────────────────────────────────────────────
 // { [telegramId]: { step, branch, firstName, lastName } }
 const userState = {};
@@ -37,7 +60,8 @@ bot.onText(/\/start/, async (msg) => {
 
     bot.sendMessage(
         chatId,
-        `🔥 <b>Frontend Battle – Filialda Kod Ustasi Sinovi!</b> 🔥\n\nZerikdingizmi? 💻 Keling, filialni jonlantiramiz!\nFrontend dasturlash bo\'yicha front-battle boshlanadi!\n\n✅ Kim eng tez kod yozadi?\n✅ Kim eng kreativ dizayn yaratadi?\n✅ Kim chempion bo\'ladi? 🏆\n\nDo\'stlaringni tag qil, o\'z mahoratingni sinab ko\'r va filialni jonlantirishga yordam ber!`,
+        `🔥 <b>Frontend Battle – Filialda Kod Ustasi Sinovi!</b> 🔥\n\nZerikdingizmi? 💻 Keling, filialni jonlantiramiz!\nFrontend dasturlash bo\'yicha front-battle boshlanadi!\n\n✅ Kim eng tez kod yozadi?\n✅ Kim eng kreativ dizayn yaratadi?\n✅ Kim chempion bo\'ladi? 🏆\n\nDo\'stlaringni tag qil, o\'z mahoratingni sinab ko\'r va filialni jonlantirishga yordam ber!` +
+        (formatDeadline() ? `\n\n⏳ <b>Ro'yxatdan o'tish muddati:</b> ${formatDeadline()} gacha` : ""),
         {
             parse_mode: "HTML",
             reply_markup: {
@@ -92,8 +116,9 @@ async function sendAdminPanel(chatId, branchFilter = null) {
         `📊 <b>Battle ishtirokchilari</b>${branchFilter ? ` — ${branchFilter}` : ""}\n\n` +
         `👥 Jami: <b>${total}</b>\n` +
         `✅ To'ldirilgan: <b>${filled}</b>\n\n` +
-        `🏢 Filiallar:\n${branchStats}\n\n` +
-        `${"─".repeat(28)}\n\n`;
+        `🏢 Filiallar:\n${branchStats}\n` +
+        (formatDeadline() ? `\n⏳ Muddat: <b>${formatDeadline()}</b>${isDeadlinePassed() ? " — <b>TUGADI</b>" : ""}\n` : "") +
+        `\n${"─".repeat(28)}\n\n`;
 
     // --- Split into chunks (Telegram 4096 char limit) ---
     const chunks = [];
@@ -156,6 +181,14 @@ bot.on("callback_query", async (query) => {
 
     // ── join ───────────────────────────────────────────────────────────────────
     if (data === "join") {
+        if (isDeadlinePassed()) {
+            return bot.sendMessage(
+                chatId,
+                `⛔ <b>Ro'yxatdan o'tish muddati tugadi.</b>\n\n⏳ Muddat: ${formatDeadline()} gacha edi.`,
+                { parse_mode: "HTML" }
+            );
+        }
+
         const { data: existing, error } = await supabase
             .from("users")
             .select("id, status")
