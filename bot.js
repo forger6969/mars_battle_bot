@@ -1,19 +1,28 @@
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const supabase = require("./utils/supabase");
-const http = require("http")
+const express = require("express")
+const app = express()
 
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => res.end("OK")).listen(PORT, () => {
-    console.log(`🌐 HTTP сервер запущен на порту ${PORT}`);
+
+
+
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`)
+
+// endpoint
+app.post(`/bot${process.env.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+})
+
+app.get("/", (req, res) => {
+    res.send("Bot is running");
 });
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
-    polling: {
-        interval: 300,
-        autoStart: true,
-        params: { timeout: 10 }
-    }
+app.listen(process.env.PORT || 3000, () => {
+    console.log("Server running");
 });
 
 const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_CHAT_ID || "")
