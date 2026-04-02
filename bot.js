@@ -13,6 +13,8 @@ bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`
 
 // endpoint
 app.post(`/bot${process.env.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+    console.log("update" , req.body);
+    
     bot.processUpdate(req.body);
     res.sendStatus(200);
 })
