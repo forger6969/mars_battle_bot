@@ -4,7 +4,7 @@ const supabase = require("./utils/supabase");
 const express = require("express")
 const app = express()
 
-
+app.use(express.json());
 
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
