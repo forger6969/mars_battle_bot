@@ -1,12 +1,21 @@
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const supabase = require("./utils/supabase");
+const http = require("http")
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => res.end("OK")).listen(PORT, () => {
+    console.log(`🌐 HTTP сервер запущен на порту ${PORT}`);
+});
 
-// ─── Admins ───────────────────────────────────────────────────────────────────
-// В .env можно указать несколько ID через запятую:
-// ADMIN_TELEGRAM_CHAT_ID=123456,789012,345678
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
+    polling: {
+        interval: 300,
+        autoStart: true,
+        params: { timeout: 10 }
+    }
+});
+
 const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_CHAT_ID || "")
     .split(",")
     .map((id) => id.trim())
@@ -14,9 +23,6 @@ const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_CHAT_ID || "")
 
 const isAdmin = (userId) => ADMIN_IDS.includes(String(userId));
 
-// ─── Deadline ─────────────────────────────────────────────────────────────────
-// В .env укажите: REGISTRATION_DEADLINE=2026-04-03T18:00:00
-// Формат: ISO 8601 (по ташкентскому времени UTC+5)
 const DEADLINE_RAW = process.env.REGISTRATION_DEADLINE || null;
 const DEADLINE = DEADLINE_RAW ? new Date(DEADLINE_RAW) : null;
 
@@ -37,11 +43,8 @@ function formatDeadline() {
     });
 }
 
-// ─── In-memory state ──────────────────────────────────────────────────────────
-// { [telegramId]: { step, branch, firstName, lastName } }
 const userState = {};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const removeKeyboard = { reply_markup: { remove_keyboard: true } };
 
 async function notifyAdmins(message) {
@@ -54,7 +57,6 @@ async function notifyAdmins(message) {
     }
 }
 
-// ─── /start ───────────────────────────────────────────────────────────────────
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
 
@@ -71,7 +73,6 @@ bot.onText(/\/start/, async (msg) => {
     );
 });
 
-// ─── /admin ───────────────────────────────────────────────────────────────────
 bot.onText(/\/admin/, async (msg) => {
     if (!isAdmin(msg.from.id)) {
         return bot.sendMessage(msg.chat.id, "❌ Sizda admin huquqi yo'q.");
@@ -79,7 +80,6 @@ bot.onText(/\/admin/, async (msg) => {
     await sendAdminPanel(msg.chat.id);
 });
 
-// ─── Admin panel sender ───────────────────────────────────────────────────────
 async function sendAdminPanel(chatId, branchFilter = null) {
     let query = supabase.from("users").select("*").order("created_at", { ascending: false });
 
@@ -98,7 +98,6 @@ async function sendAdminPanel(chatId, branchFilter = null) {
         return bot.sendMessage(chatId, "📭 Hali hech kim ro'yxatdan o'tmagan.");
     }
 
-    // --- Stats header ---
     const total = users.length;
     const filled = users.filter((u) => u.status === "filled").length;
 
@@ -120,7 +119,6 @@ async function sendAdminPanel(chatId, branchFilter = null) {
         (formatDeadline() ? `\n⏳ Muddat: <b>${formatDeadline()}</b>${isDeadlinePassed() ? " — <b>TUGADI</b>" : ""}\n` : "") +
         `\n${"─".repeat(28)}\n\n`;
 
-    // --- Split into chunks (Telegram 4096 char limit) ---
     const chunks = [];
     let current = header;
 
@@ -147,7 +145,6 @@ async function sendAdminPanel(chatId, branchFilter = null) {
         await bot.sendMessage(chatId, chunk, { parse_mode: "HTML" });
     }
 
-    // Filter buttons
     await bot.sendMessage(chatId, "🔍 Filtr:", {
         reply_markup: {
             inline_keyboard: [
@@ -161,7 +158,6 @@ async function sendAdminPanel(chatId, branchFilter = null) {
     });
 }
 
-// ─── Callback queries ─────────────────────────────────────────────────────────
 bot.on("callback_query", async (query) => {
     const chatId = query.message.chat.id;
     const userId = query.from.id;
@@ -170,7 +166,6 @@ bot.on("callback_query", async (query) => {
 
     await bot.answerCallbackQuery(query.id);
 
-    // ── Admin filters ──────────────────────────────────────────────────────────
     if (data.startsWith("admin_filter_")) {
         if (!isAdmin(userId)) return;
 
@@ -179,7 +174,6 @@ bot.on("callback_query", async (query) => {
         return;
     }
 
-    // ── join ───────────────────────────────────────────────────────────────────
     if (data === "join") {
         if (isDeadlinePassed()) {
             return bot.sendMessage(
@@ -231,7 +225,6 @@ bot.on("callback_query", async (query) => {
         });
     }
 
-    // ── branch selection ───────────────────────────────────────────────────────
     if (data === "branch_Minor" || data === "branch_Oybek") {
         const branchName = data === "branch_Minor" ? "Minor" : "Oybek";
 
@@ -251,13 +244,11 @@ bot.on("callback_query", async (query) => {
     }
 });
 
-// ─── Text & Contact messages ──────────────────────────────────────────────────
 bot.on("message", async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const state = userState[userId];
 
-    // ── Phone contact ──────────────────────────────────────────────────────────
     if (msg.contact) {
         if (!state || state.step !== "awaiting_phone") return;
 
@@ -286,7 +277,6 @@ bot.on("message", async (msg) => {
             { parse_mode: "HTML", ...removeKeyboard }
         );
 
-        // Notify all admins
         await notifyAdmins(
             `🆕 <b>Yangi ishtirokchi qo'shildi!</b>\n\n` +
             `👤 Ism: <b>${fullName}</b>\n` +
@@ -298,10 +288,8 @@ bot.on("message", async (msg) => {
         return;
     }
 
-    // ── Text only ──────────────────────────────────────────────────────────────
     if (!msg.text || msg.text.startsWith("/") || !state) return;
 
-    // Step 1: First name
     if (state.step === "awaiting_first_name") {
         const firstName = msg.text.trim();
 
@@ -313,7 +301,6 @@ bot.on("message", async (msg) => {
         return bot.sendMessage(chatId, "👤 Familiyangizni kiriting:");
     }
 
-    // Step 2: Last name
     if (state.step === "awaiting_last_name") {
         const lastName = msg.text.trim();
 
