@@ -89,7 +89,7 @@ bot.onText(/\/admin/, async (msg) => {
 //  Можно передать любой вопрос после команды. Если вопрос не указан,
 //  бот попросит ввести его в следующем сообщении.
 
-bot.onText(/\/survey(.*)/, async (msg, match) => {
+bot.onText(/\/survey([\s\S]*)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
